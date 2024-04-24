@@ -14,23 +14,7 @@ class CrawlerSpider(scrapy.Spider):
     def Sorting(self,lst):
         lst2 = sorted(lst, key=len, reverse=True)
         return lst2
-    def find_keyword(self,keyword):
-        headers_json = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0','Accept': 'application/json','Accept-Language': 'en-GB,en;q=0.5','content-type': 'application/x-ndjson','Origin': 'https://growjo.com','Connection': 'keep-alive','Referer': 'https://growjo.com/','Sec-Fetch-Dest': 'empty','Sec-Fetch-Mode': 'cors','Sec-Fetch-Site': 'same-site'}
-        data_post = '{"preference":"query"}\n{"query":{"bool":{"must":[{"bool":{"must":{"bool":{"should":[{"multi_match":{"query":"'+keyword+'","fields":["name"],"type":"best_fields","operator":"or","fuzziness":1}},{"multi_match":{"query":"'+keyword+'","fields":["name"],"type":"phrase_prefix","operator":"or"}}],"minimum_should_match":"1"}}}}]}},"size":20}\n'
-        url='https://es.growjo.com/saasnew/doc/_msearch'
-        KEY=None
-        try:
-            response=requests.post(url,data=data_post,headers=headers_json)
-            DATA=json.loads(response.text)
-            if 'responses' in DATA:
-                if len(DATA['responses'])>0:
-                    Data=DATA['responses'][0]['hits']['hits']
-                    for row in Data:
-                        if (str(row['_source']['name']).upper()==str(keyword).strip().upper() or str(row['_source']['name']).upper()==str(keyword).strip().upper()+" COMPANY") and KEY is None:
-                            KEY=row['_source']['name']
-        except:
-            pass
-        return KEY
+
     def start_requests(self):
         wb = load_workbook(filename = 'Companies.xlsx',data_only=True)
         for i in range(len(wb.sheetnames)):
@@ -38,68 +22,99 @@ class CrawlerSpider(scrapy.Spider):
             data = wb[SHEET]
             for i in range(2,data.max_row+1,1):
                 item={}
-                item['KEYWORD']=''
-                item['KEYWORDS']=[]
-                for j in range(1,data.max_column+1,1):
-                    if not data.cell(i,j).value in item:
-                        item[data.cell(1,j).value]=str(data.cell(i,j).value).strip()
-                for K in self.LS:
-                    item[(str(K).replace('annual ','')).title()]=''
-                item['List of 10 Competitors']=''
+                item={'KEYWORD':'','KEYWORDS':[]}
+            for K in self.LS:
+                item[(str(K).replace('annual ','')).title()]=''
+            item['List of 10 Competitors']=''
+            if not 'KEYWORDS' in item or len(item['KEYWORDS'])==0:
                 item['KEYWORDS'].append(item['COMPANY'])
                 item['KEYWORDS'].append(str(item['COMPANY']).replace("&"," and "))
-                yield scrapy.Request(self.URL,callback=self.parse_keyword,meta={'item':item}, dont_filter=True)
+            item['CRAWLED']=0
+            for K in self.LS:
+                if item[(str(K).replace('annual ','')).title()]!='':
+                    item['CRAWLED']=1
+            if len(item['KEYWORDS'])>0:
+                yield scrapy.Request(self.URL,callback=self.parse_keyword,meta={'proxy':None, 'item':item},dont_filter=True)
     def parse_keyword(self, response):
         item=response.meta['item']
-        COMPANY=(str(item['COMPANY']).split('(')[0]).strip()
-        item['KEYWORDS'].append(COMPANY)
-        if str(COMPANY).endswith('.'):
-            COMPANYN=" ".join(str(COMPANY).split()[:-1])
+        if item['CRAWLED']==1:
+            print('\n ---------------------------')
+            yield(item)
+        else:
+            COMPANY=(str(item['COMPANY']).split('(')[0]).strip()
+            item['KEYWORDS'].append(COMPANY)
+            if str(COMPANY).endswith('.'):
+                COMPANYN=" ".join(str(COMPANY).split()[:-1])
+                if str(COMPANY).endswith('and'):
+                    COMPANYN=" ".join(str(COMPANY).split()[:-1])
+                if str(COMPANYN).endswith(",") or str(COMPANYN).endswith("&"):
+                    COMPANYN=str(COMPANYN[:-1]).strip()
+                item['KEYWORDS'].append(COMPANYN)
+            if str(COMPANY).endswith('Corp.'):
+                COMPANYN=str(COMPANY).replace('Corp.','Corporation')
+                item['KEYWORDS'].append(COMPANYN)
             if str(COMPANY).endswith('and'):
                 COMPANYN=" ".join(str(COMPANY).split()[:-1])
-            if str(COMPANYN).endswith(",") or str(COMPANYN).endswith("&"):
-                COMPANYN=str(COMPANYN[:-1]).strip()
-            item['KEYWORDS'].append(COMPANYN)
-        if str(COMPANY).endswith('Corp.'):
-            COMPANYN=str(COMPANY).replace('Corp.','Corporation')
-            item['KEYWORDS'].append(COMPANYN)
-        if str(COMPANY).endswith('and'):
-            COMPANYN=" ".join(str(COMPANY).split()[:-1])
 
-        COMPANY=str(COMPANY).replace("&"," and ")
-        item['KEYWORDS'].append(COMPANY)
-        if str(COMPANY).endswith('.'):
-            COMPANYN=" ".join(str(COMPANY).split()[:-1])
+            COMPANY=str(COMPANY).replace("&"," and ")
+            item['KEYWORDS'].append(COMPANY)
+            if str(COMPANY).endswith('.'):
+                COMPANYN=" ".join(str(COMPANY).split()[:-1])
+                if str(COMPANY).endswith('and'):
+                    COMPANYN=" ".join(str(COMPANY).split()[:-1])
+                if str(COMPANYN).endswith(",") or str(COMPANYN).endswith("&"):
+                    COMPANYN=str(COMPANYN[:-1]).strip()
+                item['KEYWORDS'].append(COMPANYN)
+            if str(COMPANY).endswith('Corp.'):
+                COMPANYN=str(COMPANY).replace('Corp.','Corporation')
+                item['KEYWORDS'].append(COMPANYN)
             if str(COMPANY).endswith('and'):
                 COMPANYN=" ".join(str(COMPANY).split()[:-1])
-            if str(COMPANYN).endswith(",") or str(COMPANYN).endswith("&"):
-                COMPANYN=str(COMPANYN[:-1]).strip()
-            item['KEYWORDS'].append(COMPANYN)
-        if str(COMPANY).endswith('Corp.'):
-            COMPANYN=str(COMPANY).replace('Corp.','Corporation')
-            item['KEYWORDS'].append(COMPANYN)
-        if str(COMPANY).endswith('and'):
-            COMPANYN=" ".join(str(COMPANY).split()[:-1])
-
-        COMPANY_NAME=mining_company_name((str(item['COMPANY']).split('(')[0]).strip())
-        item['KEYWORDS'].append(COMPANY_NAME['PRODUCT'])
-        item['KEYWORDS'].append(re.split(' Co.| Cos.',COMPANY_NAME['PRODUCT'])[0])
-        if validators.domain(COMPANY_NAME['PRODUCT'])==True:
-            item['KEYWORDS'].append((str(COMPANY_NAME['PRODUCT']).replace('www.','')).split(".")[0])
-        item['KEYWORDS'] = self.Sorting(list(dict.fromkeys(item['KEYWORDS'])))
+            COMPANY_NAME=mining_company_name((str(item['COMPANY']).split('(')[0]).strip())
+            item['KEYWORDS'].append(COMPANY_NAME['PRODUCT'])
+            item['KEYWORDS'].append(re.split(' Co.| Cos.',COMPANY_NAME['PRODUCT'])[0])
+            if validators.domain(COMPANY_NAME['PRODUCT'])==True:
+                item['KEYWORDS'].append((str(COMPANY_NAME['PRODUCT']).replace('www.','')).split(".")[0])
+            item['KEYWORDS'] = self.Sorting(list(dict.fromkeys(item['KEYWORDS'])))
+            KW=[]
+            for kw in item['KEYWORDS']:
+                if len(kw)>3:
+                    KW.append(kw)
+            item['KEYWORDS']=KW
+            if len(item['KEYWORDS'])==0:
+                item['KEYWORDS'].append(item['COMPANY'])
+            data_post = '{"preference":"query"}\n{"query":{"bool":{"must":[{"bool":{"must":{"bool":{"should":[{"multi_match":{"query":"'+item['KEYWORDS'][0]+'","fields":["name"],"type":"best_fields","operator":"or","fuzziness":1}},{"multi_match":{"query":"'+item['KEYWORDS'][0]+'","fields":["name"],"type":"phrase_prefix","operator":"or"}}],"minimum_should_match":"1"}}}}]}},"size":20}\n'
+            yield scrapy.Request('https://es.growjo.com/saasnew/doc/_msearch',method="POST",body=data_post,headers=self.headers_json,meta={'item':item,'TT':0}, callback=self.find_keyword,dont_filter=True)
+    
+    def find_keyword(self,response):
+        item=response.meta['item']
+        TT=response.meta['TT']
+        keyword=item['KEYWORDS'][TT]
         KEYWORD=None
-        TT=0
-        while KEYWORD is None and TT<len(item['KEYWORDS']):
-            KEYWORD=self.find_keyword(item['KEYWORDS'][TT])
-            TT+=1
+        try:
+            DATA=json.loads(response.text)
+            if 'responses' in DATA:
+                if len(DATA['responses'])>0:
+                    Data=DATA['responses'][0]['hits']['hits']
+                    for row in Data:
+                        if (str(row['_source']['name']).upper()==str(keyword).strip().upper() or str(row['_source']['name']).upper()==str(keyword).strip().upper()+" COMPANY") and KEYWORD is None:
+                            KEYWORD=row['_source']['name']
+        except:
+            pass
         if KEYWORD:
             item['KEYWORD']=KEYWORD
             url="https://growjo.com/company/"+str(KEYWORD).replace(" ","_")
-            yield scrapy.Request(url,callback=self.parse_data,meta={'item':item},dont_filter=True)
+            yield scrapy.Request(url,callback=self.parse_data,meta={'item':item})
+        elif TT<len(item['KEYWORDS'])-1:
+            TT+=1
+            data_post = '{"preference":"query"}\n{"query":{"bool":{"must":[{"bool":{"must":{"bool":{"should":[{"multi_match":{"query":"'+item['KEYWORDS'][TT]+'","fields":["name"],"type":"best_fields","operator":"or","fuzziness":1}},{"multi_match":{"query":"'+item['KEYWORDS'][TT]+'","fields":["name"],"type":"phrase_prefix","operator":"or"}}],"minimum_should_match":"1"}}}}]}},"size":20}\n'
+            yield scrapy.Request('https://es.growjo.com/saasnew/doc/_msearch',method="POST",body=data_post,headers=self.headers_json,meta={'item':item,'TT':TT}, callback=self.find_keyword,dont_filter=True)
         else:
+            item['CRAWLED']=1
             yield(item)
     def parse_data(self,response):
-        item=response.meta['item']       
+        item=response.meta['item']
+        item['CRAWLED']=1
         Data=response.xpath('//div[contains(@class,"description")]//ul[1]/li')
         for row in Data:
             TXT="".join(row.xpath('.//text()').getall())
@@ -117,4 +132,5 @@ class CrawlerSpider(scrapy.Spider):
                     TEXT.append(rs)
             Competitors.append(" ".join(TEXT))
         item['List of 10 Competitors']="\n".join(Competitors[:10])
+        print('\n =========================================')
         yield(item)
